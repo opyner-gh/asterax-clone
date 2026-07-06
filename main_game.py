@@ -17,7 +17,6 @@ CYAN = (0, 255, 255)
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        # In a real game, you'd load an image: pygame.image.load("ship.png")
         self.image = pygame.Surface((40, 30))
         self.image.fill(CYAN)
         self.rect = self.image.get_rect(center=(100, HEIGHT // 2))
@@ -46,10 +45,23 @@ class Bullet(pygame.sprite.Sprite):
         if self.rect.left > WIDTH:
             self.kill()
 
+# New class for bullets fired by enemies
+class EnemyBullet(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((10, 5))
+        self.image.fill(RED) # Red color to distinguish from player bullets
+        self.rect = self.image.get_rect(center=(x, y))
+        self.speed = -7 # Negative because they fly left
+
+    def update(self):
+        self.rect.x += self.speed
+        if self.rect.left < 0:
+            self.kill()
+
 class Enemy(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        # In a real game, you'd load an image: pygame.image.load("enemy.png")
         self.image = pygame.Surface((30, 30))
         self.image.fill(RED)
         self.rect = self.image.get_rect()
@@ -57,6 +69,8 @@ class Enemy(pygame.sprite.Sprite):
         self.rect.x = WIDTH + random.randint(10, 300)
         self.rect.y = random.randint(50, HEIGHT - 50)
         self.speed = random.randint(2, 5)
+        # New property: Timer to control how often they shoot
+        self.shoot_timer = 0
 
     def update(self):
         self.rect.x -= self.speed
@@ -68,12 +82,13 @@ class Enemy(pygame.sprite.Sprite):
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Asterax Clone (Python Edition)")
+    pygame.display.set_caption("Asterax Clone - Enemy Fire Active")
     clock = pygame.time.Clock()
 
     # Sprite Groups
     all_sprites = pygame.sprite.Group()
     bullets = pygame.sprite.Group()
+    enemy_bullets = pygame.sprite.Group() # New group for enemy bullets
     enemies = pygame.sprite.Group()
 
     player = Player()
@@ -81,8 +96,6 @@ def main():
 
     score = 0
     font = pygame.font.SysFont("Arial", 24)
-
-    # ... (previous code remains the same until the while loop)
 
     running = True
     while running:
@@ -98,16 +111,26 @@ def main():
 
         # 2. Update logic
         keys = pygame.key.get_pressed()
-        
-        # Instead of all_sprites.update(), we update them individually/specifically
-        # This ensures the "keys" get passed correctly or ignored where not needed
-        player.update(keys) # This now specifically handles player movement
+        player.update(keys)
         
         for bullet in bullets:
             bullet.update()
         
+        for eb in enemy_bullets:
+            eb.update()
+        
+        # Update enemies and handle their shooting logic
         for enemy in enemies:
             enemy.update()
+            # Each frame, check if the enemy should shoot
+            enemy.shoot_timer -= 1
+            if enemy.shoot_timer <= 0:
+                # Random chance to fire when timer hits zero (roughly every 1 second)
+                if random.random() < 0.5: 
+                    eb = EnemyBullet(enemy.rect.left, enemy.rect.centery)
+                    all_sprites.add(eb)
+                    enemy_bullets.add(eb)
+                enemy.shoot_timer = 60 # Reset timer (60 frames = ~1 second)
 
         # Spawn enemies randomly
         if random.random() < 0.03: 
@@ -116,12 +139,19 @@ def main():
             enemies.add(enemy)
 
         # 3. Collision Detection
+        # Player bullets hitting enemies
         hits = pygame.sprite.groupcollide(enemies, bullets, True, True)
         for hit in hits:
             score += 10
 
+        # Enemy bullets hitting player
+        if pygame.sprite.spritecollideany(player, enemy_bullets):
+            print(f"Game Over! Enemy hit you! Final Score: {score}")
+            running = False
+
+        # If player touches any enemy directly
         if pygame.sprite.spritecollideany(player, enemies):
-            print(f"Game Over! Final Score: {score}")
+            print(f"Game Over! Crashed into an enemy! Final Score: {score}")
             running = False
 
         # 4. Rendering
@@ -134,7 +164,6 @@ def main():
 
         pygame.display.flip()
         clock.tick(FPS)
-
 
     pygame.quit()
 
