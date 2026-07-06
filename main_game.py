@@ -40,8 +40,9 @@ class Player(pygame.sprite.Sprite):
 
         # 2. Thrust Logic: Up arrow applies thrust based on current angle
         if keys[pygame.K_UP]:
-            # Requirement: Use rotate(-self.angle) on a horizontal vector to find direction
-            thrust = pygame.math.Vector2(0.5, 0).rotate(-self.angle)
+            # Use Vector2.rotate() to calculate direction without using the math module
+            # Note: We use -self.angle because Pygame's Y-axis is inverted compared to standard math
+            thrust = pygame.math.Vector2(1, 0).rotate(-self.angle)
             self.vel += thrust
 
         # 3. Friction logic: Multiply velocity by 0.98 every frame
@@ -62,8 +63,8 @@ class Player(pygame.sprite.Sprite):
             self.pos.y -= SCREEN_HEIGHT
 
         # 6. Rotation & Drawing Logic
-        # Update image by rotating base_image and re-centering the rect to prevent wobble
-        self.image = self.base_image.rotate(self.angle)
+        # FIX: Use pygame.transform.rotate() instead of .rotate() on the surface object
+        self.image = pygame.transform.rotate(self.base_image, self.angle)
         self.rect = self.image.get_rect(center=self.pos)
 
 def main():
