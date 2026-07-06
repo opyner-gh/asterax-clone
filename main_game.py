@@ -17,47 +17,50 @@ CYAN = (0, 255, 255)
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        # Create a surface and rotate it. We use a slightly larger size to account for rotation.
+        # Create a surface and rotate it.
         self.original_image = pygame.Surface((40, 40), pygame.SRCALPHA)
         self.original_image.fill(CYAN)
-        # Draw a "front" indicator (a small white rectangle) so you can see the direction
+        # Draw a "front" indicator (a small white rectangle) to see the direction clearly
         pygame.draw.rect(self.original_image, WHITE, (15, 10, 10, 20))
 
         self.image = self.original_image
         self.rect = self.image.get_rect(center=(WIDTH // 2, HEIGHT // 2))
         self.angle = 0
-        self.speed = 4  # Movement speed
+        self.speed = 4
 
     def update(self):
         keys = pygame.key.get_pressed()
         
         # --- Rotation Logic ---
-        # Left arrow: Counter-Clockwise (positive change)
+        # Left Arrow = Counter-Clockwise (+)
         if keys[pygame.K_LEFT]:
             self.angle += 3
-        # Right arrow: Clockwise (negative change)
+        # Right Arrow = Clockwise (-)
         if keys[pygame.K_RIGHT]:
             self.angle -= 3
 
-        # Keep angle within 0-360 range
-        self.angle = (self.angle + 360) % 360
+        # Keep the angle between 0 and 360
+        self.angle %= 360
 
         # --- Movement Logic ---
-        # We use trigonometry to move "Forward" and "Backward" based on rotation
+        # We convert the angle to radians for math functions
         rads = math.radians(self.angle)
         
-        if keys[pygame.K_UP]:
-            # Move forward: move in the direction of the current angle
-            self.rect.x += math.cos(rads) * self.speed
-            self.rect.y += math.sin(rads) * self.speed
-        if keys[pygame.K_DOWN]:
-            # Move backward: move opposite to the current angle
-            self.rect.x -= math.cos(rads) * self.speed
-            self.rect.y -= math.sin(rads) * self.speed
+        # These two variables represent the "Forward" direction of your ship
+        # because both movement and bullets use these same values, they will always be in sync.
+        forward_x = math.cos(rads)
+        forward_y = math.sin(rads)
 
-        # Update image and rect based on rotation
+        if keys[pygame.K_UP]:
+            self.rect.x += forward_x * self.speed
+            self.rect.y += forward_y * self.speed
+        if keys[pygame.K_DOWN]:
+            self.rect.x -= forward_x * self.speed
+            self.rect.y -= forward_y * self.speed
+
+        # Update the visual rotation of the ship
         self.image = pygame.transform.rotate(self.original_image, self.angle)
-        # Fix the rectangle position so it doesn't "wobble" when rotating
+        # Keep the center fixed while rotating
         self.rect = self.image.get_rect(center=self.rect.center)
 
 class Bullet(pygame.sprite.Sprite):
@@ -67,7 +70,7 @@ class Bullet(pygame.sprite.Sprite):
         self.image.fill(YELLOW)
         self.rect = self.image.get_rect(center=(x, y))
 
-        # Calculate trajectory using trigonometry
+        # Using the exact same trig as the player ensures bullets come from the "nose"
         rads = math.radians(angle)
         self.vx = math.cos(rads) * 8
         self.vy = math.sin(rads) * 8
@@ -85,7 +88,6 @@ class EnemyBullet(pygame.sprite.Sprite):
         self.image.fill(RED)
         self.rect = self.image.get_rect(center=(x, y))
 
-        # Calculate vector towards the player (the center of the screen)
         dx = target_x - x
         dy = target_y - y
         dist = math.hypot(dx, dy)
@@ -108,7 +110,6 @@ class Enemy(pygame.sprite.Sprite):
         self.image.fill(RED)
         self.rect = self.image.get_rect()
 
-        # Random spawn point on the edges
         side = random.randint(0, 3)
         if side == 0: # Top
             self.rect.centerx = random.randint(0, WIDTH)
@@ -123,7 +124,6 @@ class Enemy(pygame.sprite.Sprite):
             self.rect.centerx = random.randint(WIDTH-50, WIDTH+100)
             self.rect.centery = random.randint(0, HEIGHT)
 
-        # Movement towards center
         target_x, target_y = WIDTH // 2, HEIGHT // 2
         dx = target_x - self.rect.centerx
         dy = target_y - self.rect.centery
@@ -151,7 +151,6 @@ def main():
     pygame.display.set_caption("Asterax - Circular Combat")
     clock = pygame.time.Clock()
 
-    # Sprite Groups
     all_sprites = pygame.sprite.Group()
     bullets = pygame.sprite.Group()
     enemy_bullets = pygame.sprite.Group()
@@ -165,7 +164,6 @@ def main():
 
     running = True
     while running:
-        # 1. Event Handling
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -175,16 +173,13 @@ def main():
                     all_sprites.add(new_bullet)
                     bullets.add(new_bullet)
 
-        # 2. Update logic
         all_sprites.update()
 
-        # Spawn enemies
         if random.random() < 0.03:
             enemy = Enemy()
             all_sprites.add(enemy)
             enemies.add(enemy)
 
-        # Handle enemy shooting
         for enemy in enemies:
             if enemy.shoot_timer <= 0:
                 eb = EnemyBullet(enemy.rect.centerx, enemy.rect.centery, WIDTH//2, HEIGHT//2)
@@ -192,7 +187,6 @@ def main():
                 enemy_bullets.add(eb)
                 enemy.shoot_timer = random.randint(40, 100)
 
-        # 3. Collision Detection
         hits = pygame.sprite.groupcollide(enemies, bullets, True, True)
         for hit in hits:
             score += 10
@@ -205,11 +199,9 @@ def main():
             print(f"Game Over! Crashed into an enemy! Final Score: {score}")
             running = False
 
-        # 4. Rendering
         screen.fill(BLACK)
         all_sprites.draw(screen)
 
-        # Draw score
         score_text = font.render(f"Score: {score}", True, WHITE)
         screen.blit(score_text, (10, 10))
 
