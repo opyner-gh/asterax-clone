@@ -5,3 +5,7 @@ venv/
 env/
 .env
 .pytest_cache/
+# pyinstaller files
+build/
+dist/
+*.spec
