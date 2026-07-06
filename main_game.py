@@ -22,22 +22,39 @@ class Player(pygame.sprite.Sprite):
         self.original_image.fill(CYAN)
         # Draw a "front" indicator (a small white rectangle) so you can see the direction
         pygame.draw.rect(self.original_image, WHITE, (15, 10, 10, 20))
-        
+
         self.image = self.original_image
         self.rect = self.image.get_rect(center=(WIDTH // 2, HEIGHT // 2))
         self.angle = 0
+        self.speed = 4  # Movement speed
 
     def update(self):
         keys = pygame.key.get_pressed()
-        # Rotate based on Left/Right keys
+        
+        # --- Rotation Logic ---
+        # Left arrow: Counter-Clockwise (positive change)
         if keys[pygame.K_LEFT]:
             self.angle += 3
+        # Right arrow: Clockwise (negative change)
         if keys[pygame.K_RIGHT]:
             self.angle -= 3
 
-        # Clamp the angle
+        # Keep angle within 0-360 range
         self.angle = (self.angle + 360) % 360
+
+        # --- Movement Logic ---
+        # We use trigonometry to move "Forward" and "Backward" based on rotation
+        rads = math.radians(self.angle)
         
+        if keys[pygame.K_UP]:
+            # Move forward: move in the direction of the current angle
+            self.rect.x += math.cos(rads) * self.speed
+            self.rect.y += math.sin(rads) * self.speed
+        if keys[pygame.K_DOWN]:
+            # Move backward: move opposite to the current angle
+            self.rect.x -= math.cos(rads) * self.speed
+            self.rect.y -= math.sin(rads) * self.speed
+
         # Update image and rect based on rotation
         self.image = pygame.transform.rotate(self.original_image, self.angle)
         # Fix the rectangle position so it doesn't "wobble" when rotating
@@ -49,7 +66,7 @@ class Bullet(pygame.sprite.Sprite):
         self.image = pygame.Surface((10, 5))
         self.image.fill(YELLOW)
         self.rect = self.image.get_rect(center=(x, y))
-        
+
         # Calculate trajectory using trigonometry
         rads = math.radians(angle)
         self.vx = math.cos(rads) * 8
@@ -67,7 +84,7 @@ class EnemyBullet(pygame.sprite.Sprite):
         self.image = pygame.Surface((10, 5))
         self.image.fill(RED)
         self.rect = self.image.get_rect(center=(x, y))
-        
+
         # Calculate vector towards the player (the center of the screen)
         dx = target_x - x
         dy = target_y - y
@@ -90,7 +107,7 @@ class Enemy(pygame.sprite.Sprite):
         self.image = pygame.Surface((30, 30))
         self.image.fill(RED)
         self.rect = self.image.get_rect()
-        
+
         # Random spawn point on the edges
         side = random.randint(0, 3)
         if side == 0: # Top
@@ -117,7 +134,7 @@ class Enemy(pygame.sprite.Sprite):
             speed = random.uniform(1, 3)
             self.vx = (dx / dist) * speed
             self.vy = (dy / dist) * speed
-            
+
         self.shoot_timer = random.randint(40, 90)
 
     def update(self):
@@ -154,7 +171,6 @@ def main():
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    # Player bullet follows current rotation
                     new_bullet = Bullet(player.rect.centerx, player.rect.centery, player.angle)
                     all_sprites.add(new_bullet)
                     bullets.add(new_bullet)
@@ -168,27 +184,23 @@ def main():
             all_sprites.add(enemy)
             enemies.add(enemy)
 
-        # Handle enemy shooting (Logic moved here to fix Scope Error)
+        # Handle enemy shooting
         for enemy in enemies:
             if enemy.shoot_timer <= 0:
                 eb = EnemyBullet(enemy.rect.centerx, enemy.rect.centery, WIDTH//2, HEIGHT//2)
                 all_sprites.add(eb)
                 enemy_bullets.add(eb)
-                # Reset the timer specifically for this enemy object
                 enemy.shoot_timer = random.randint(40, 100)
 
         # 3. Collision Detection
-        # Player bullets hitting enemies
         hits = pygame.sprite.groupcollide(enemies, bullets, True, True)
         for hit in hits:
             score += 10
 
-        # Enemy bullets hitting player
         if pygame.sprite.spritecollideany(player, enemy_bullets):
             print(f"Game Over! Hit by enemy fire! Final Score: {score}")
             running = False
 
-        # Player colliding with enemies
         if pygame.sprite.spritecollideany(player, enemies):
             print(f"Game Over! Crashed into an enemy! Final Score: {score}")
             running = False
@@ -196,7 +208,7 @@ def main():
         # 4. Rendering
         screen.fill(BLACK)
         all_sprites.draw(screen)
-        
+
         # Draw score
         score_text = font.render(f"Score: {score}", True, WHITE)
         screen.blit(score_text, (10, 10))
