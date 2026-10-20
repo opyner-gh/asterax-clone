@@ -1,109 +1,199 @@
 # game.py
 import pygame
-import random
 import math
-
-from config import (SCREEN_W, SCREEN_H, FPS, BULLET_SPEED, BULLET_MAX_ACTIVE,
-                    INITIAL_ASTEROID_COUNT, ASTEROID_RESPAWN_FRAMES)
+import random
+from config import (ROCK_SIZES, get_screen_size, get_fps,
+                    get_col_bg, get_col_star, get_col_bullet, get_col_ui_text, get_col_danger)
 from player import Player
 from asteroid import Asteroid
 from bullet import Bullet
+from ships import SHIP_ROSTER
+from levels import level_for
+from ship_select import ShipSelect
+from shop import Shop
 
+# ── tiny starfield ────────────────────────────────────────────
+def make_stars(n=80):
+    return [(random.randint(0, get_screen_size()[0]), random.randint(0, get_screen_size()[1]),
+             random.choice([get_col_star(), (40,40,50)])) for _ in range(n)]
 
 class Game:
+    # states
+    SELECT = "select"
+    PLAY   = "play"
+    SHOP   = "shop"
+    OVER   = "over"
+
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-        pygame.display.set_caption("Asteroids")
+        self.screen = pygame.display.set_mode(get_screen_size())
+        pygame.display.set_caption("ASTERAX")
         self.clock = pygame.time.Clock()
-        self.running = True
-        self.reset()
+        self.stars = make_stars()
+        self.font  = pygame.font.SysFont("monospace", 20)
+        self.font_big = pygame.font.SysFont("monospace", 32, bold=True)
 
-    # ── state ─────────────────────────────────────────────────
-    def reset(self):
-        self.player = Player(SCREEN_W // 2, SCREEN_H // 2)
-        self.player.invuln_timer = 0
-        self.asteroids: list[Asteroid] = []
-        self.bullets: list[Bullet] = []
+        self.state = self.SELECT
+        self.ship = SHIP_ROSTER[0]
+        self.upgrades: dict[str, int] = {}
+        self.credits = 0
+        self.level = 0
         self.score = 0
         self.lives = 3
-        self.spawning = False
-        self.spawn_timer = 0
-        self._spawn_initial_wave()
+        self.high_level = 0          # highest level cleared (for ship unlocks)
 
-    def _spawn_initial_wave(self):
-        for _ in range(INITIAL_ASTEROID_COUNT):
-            x, y = self._safe_spawn_point()
-            self.asteroids.append(Asteroid(x, y, "big"))
+        # play-state objects
+        self.player: Player | None = None
+        self.asteroids: list[Asteroid] = []
+        self.bullets: list[Bullet] = []
 
-    def _safe_spawn_point(self) -> tuple:
-        """Pick a position at least 120px from the player."""
-        for _ in range(200):
-            x = random.uniform(0, SCREEN_W)
-            y = random.uniform(0, SCREEN_H)
-            if math.hypot(x - self.player.x, y - self.player.y) > 150:
-                return x, y
-        return (50, 50)
+        # current sub-state object (ShipSelect or Shop)
+        self.select_ui: ShipSelect | None = None
+        self.shop_ui: Shop | None = None
 
-    # ── input ─────────────────────────────────────────────────
-    def _handle_input(self, events):
-        keys = pygame.key.get_pressed()
+        self._enter_select()
 
-        self.player.thrusting = keys[pygame.K_UP] or keys[pygame.K_w]
-        self.player.turning = 0
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            self.player.turning = -1
-        elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            self.player.turning = 1
-        self.player.firing = keys[pygame.K_SPACE] or keys[pygame.K_s]
+    # ── state transitions ─────────────────────────────────────
+    def _enter_select(self):
+        self.state = self.SELECT
+        self.select_ui = ShipSelect(max_unlocked=self.high_level)
 
-        for event in events:
-            if event.type == pygame.QUIT:
-                self.running = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    self.running = False
-                if event.key == pygame.K_r:
-                    self.reset()
+    def _enter_play(self):
+        self.state = self.PLAY
+        self.player = Player(self.ship, self.upgrades, get_screen_size()[0]//2, get_screen_size()[1]//2)
+        self.player.invuln = 0
+        self.asteroids = []
+        self.bullets = []
+        if self.level == 0:
+            self.lives = 3 + self.player.stats["extra_lives"]
+        self._spawn_wave()
+
+    def _enter_shop(self):
+        self.state = self.SHOP
+        self.shop_ui = Shop(self.credits, self.upgrades, self.level)
+
+    def _enter_over(self):
+        self.state = self.OVER
 
     # ── spawning ──────────────────────────────────────────────
-    def _spawn_bullet(self):
-        active = len(self.bullets)
-        if active >= BULLET_MAX_ACTIVE or self.player.shoot_cooldown > 0:
-            return
-        angle = self.player.angle
-        # spawn at the tip of the ship
-        sx = self.player.x + math.cos(angle) * self.player.size
-        sy = self.player.y + math.sin(angle) * self.player.size
-        vx = math.cos(angle) * BULLET_SPEED + self.player.vx
-        vy = math.sin(angle) * BULLET_SPEED + self.player.vy
-        self.bullets.append(Bullet(sx, sy, vx, vy))
-        self.player.shoot_cooldown = 8
-
     def _spawn_wave(self):
-        """Called after the board is clear, to keep the game going."""
-        for _ in range(INITIAL_ASTEROID_COUNT):
-            x, y = self._safe_spawn_point()
-            self.asteroids.append(Asteroid(x, y, "big"))
-        self.spawning = False
+        lvl = level_for(self.level)
+        for _ in range(lvl.big_rocks):
+            x, y = self._safe_point()
+            self.asteroids.append(Asteroid(x, y, "big",
+                                           (lvl.rock_speed_min, lvl.rock_speed_max)))
 
-    # ── collisions ────────────────────────────────────────────
-    def _check_collisions(self):
-        # Bullets vs Asteroids
+    def _safe_point(self):
+        for _ in range(200):
+            x, y = random.uniform(40, get_screen_size()[0]-40), random.uniform(40, get_screen_size()[1]-40)
+            if self.player and math.hypot(x-self.player.x, y-self.player.y) > 160:
+                return x, y
+        return (60, 60)
+
+    # ── input ─────────────────────────────────────────────────
+    def _handle_events(self, events):
+        for e in events:
+            if e.type == pygame.QUIT:
+                return "quit"
+        result = None
+        if self.state == self.SELECT:
+            result = self.select_ui.handle(events)
+            if result == "quit":
+                return "quit"
+            if self.select_ui.confirmed:
+                self.ship = self.select_ui.selected_ship
+                self.level = 0
+                self._enter_play()
+        elif self.state == self.SHOP:
+            result = self.shop_ui.handle(events)
+            if self.shop_ui.done:
+                old_hull = self.upgrades.get("hull", 0)
+                new_hull = self.shop_ui.final_owned.get("hull", 0)
+                if new_hull > old_hull:
+                    self.lives += (new_hull - old_hull)
+                self.upgrades = self.shop_ui.final_owned
+                self.credits = self.shop_ui.remaining_credits
+                self.level += 1
+                self._enter_play()
+        elif self.state == self.OVER:
+            for e in events:
+                if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_RETURN:
+                        self.credits = 0
+                        self.upgrades = {}
+                        self.level = 0
+                        self.score = 0
+                        self._enter_select()
+                    elif e.key == pygame.K_ESCAPE:
+                        return "quit"
+        return result
+
+    def _play_input(self):
+        keys = pygame.key.get_pressed()
+        p = self.player
+        p.thrusting = keys[pygame.K_UP] or keys[pygame.K_w]
+        p.turning = 0
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:  p.turning = -1
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:  p.turning =  1
+        p.firing = keys[pygame.K_SPACE]
+
+    # ── play update ───────────────────────────────────────────
+    def _update_play(self):
+        self.player.update()
+
+        if self.player.firing and self.player.shoot_cd <= 0:
+            self._fire()
+
+        for b in self.bullets: b.update()
+        for a in self.asteroids: a.update()
+
+        self._collisions()
+        self.bullets   = [b for b in self.bullets if b.active]
+        self.asteroids = [a for a in self.asteroids if a.active]
+
+        # wave cleared?
+        if not self.asteroids:
+            self.score += 500 + self.level * 100
+            self.credits += 200 + self.level * 50
+            self.high_level = max(self.high_level, self.level)
+            self._enter_shop()
+
+    def _fire(self):
+        p = self.player
+        max_active = p.stats["max_bullets"]
+        if len(self.bullets) >= max_active:
+            return
+        count = p.stats.get("bullets_per_shot", 1)
+        spread_step = math.radians(10)
+        bs = p.stats["bullet_speed"]
+        for i in range(count):
+            if len(self.bullets) >= max_active:
+                break
+            offset = (i - (count - 1) / 2.0) * spread_step
+            a = p.angle + offset
+            bx = p.x + math.cos(a) * p.size
+            by = p.y + math.sin(a) * p.size
+            self.bullets.append(Bullet(bx, by,
+                                       math.cos(a)*bs + p.vx,
+                                       math.sin(a)*bs + p.vy))
+        p.shoot_cd = p.stats["bullet_cooldown"]
+
+    def _collisions(self):
+        lvl = level_for(self.level)
+        # bullet ↔ rock
         for b in self.bullets:
             for a in self.asteroids:
-                if not b.active or not a.active:
-                    continue
-                if b.collides(a):
+                if b.active and a.active and b.collides(a):
                     b.active = False
                     a.active = False
-                    self.score += int(1000 / a.size)
-                    # split
-                    new_rocks = a.split()
-                    self.asteroids.extend(new_rocks)
+                    pts = next(p for _,k,p in ROCK_SIZES if k == a.size_key)
+                    self.score += pts
+                    self.credits += pts
+                    self.asteroids.extend(a.split(
+                        (lvl.rock_speed_min, lvl.rock_speed_max),
+                        lvl.rock_split_chance))
                     break
-
-        # Player vs Asteroids
+        # player ↔ rock
         if self.player.alive:
             for a in self.asteroids:
                 if a.active and self.player.collides(a):
@@ -111,109 +201,73 @@ class Game:
                     break
 
     def _player_hit(self):
+        p = self.player
+        if p.shield_charges > 0:
+            p.shield_charges -= 1
+            p.invuln = 60
+            return
         self.lives -= 1
         if self.lives <= 0:
-            self.running = False
+            self._enter_over()
             return
-        self.player.x = SCREEN_W // 2
-        self.player.y = SCREEN_H // 2
-        self.player.vx = 0
-        self.player.vy = 0
-        self.player.angle = math.radians(-90)
-        self.player.invuln_timer = 120  # brief invuln
+        p.reset_position(get_screen_size()[0]//2, get_screen_size()[1]//2, invuln=120)
+
+    # ── render ────────────────────────────────────────────────
+    def _draw_bg(self):
+        self.screen.fill(get_col_bg())
+        for sx, sy, sc in self.stars:
+            pygame.draw.rect(self.screen, sc, (sx, sy, 2, 2))
+
+    def _draw_play(self):
+        for a in self.asteroids: a.draw(self.screen)
+        for b in self.bullets:
+            px, py = b.to_screen()
+            pygame.draw.circle(self.screen, get_col_bullet(), (px, py), 2)
+        self.player.draw(self.screen, self.font)
+
+        # HUD
+        shield_str = f"   Shield {'◆'*self.player.shield_charges}" if self.player.shield_charges > 0 else ""
+        hud = self.font.render(f"LV {self.level+1}   Score {self.score}   "
+                               f"Lives {'♥'*self.lives}{shield_str}   Cr {self.credits}",
+                               True, get_col_ui_text())
+        self.screen.blit(hud, (12, 10))
+        ship_tag = self.font.render(f"[{self.ship.name}]", True, (120,120,130))
+        self.screen.blit(ship_tag, (get_screen_size()[0] - ship_tag.get_width() - 12, 10))
+
+    def _draw_over(self):
+        self._draw_bg()
+        t1 = self.font_big.render("GAME OVER", True, get_col_danger())
+        t2 = self.font.render(f"Score {self.score}   Level reached {self.level+1}", True, get_col_ui_text())
+        t3 = self.font.render("ENTER: new game    ESC: quit", True, (130,130,140))
+        cx = get_screen_size()[0] // 2
+        self.screen.blit(t1, (cx - t1.get_width()//2, get_screen_size()[1]//2 - 60))
+        self.screen.blit(t2, (cx - t2.get_width()//2, get_screen_size()[1]//2))
+        self.screen.blit(t3, (cx - t3.get_width()//2, get_screen_size()[1]//2 + 40))
+
+    def render(self):
+        if self.state == self.SELECT:
+            self.select_ui.draw(self.screen)
+        elif self.state == self.PLAY:
+            self._draw_bg()
+            self._draw_play()
+        elif self.state == self.SHOP:
+            self.shop_ui.draw(self.screen)
+        elif self.state == self.OVER:
+            self._draw_over()
+        pygame.display.flip()
 
     # ── main loop ─────────────────────────────────────────────
     def run(self):
-        while self.running:
+        while True:
             events = pygame.event.get()
-            self._handle_input(events)
+            quit_signal = self._handle_events(events)
+            if quit_signal == "quit":
+                pygame.quit(); return
 
-            # Update
-            self.player.update()
-            if self.player.firing:
-                self._spawn_bullet()
-
-            for b in self.bullets:
-                b.update()
-            for a in self.asteroids:
-                a.update()
-
-            self._check_collisions()
-
-            # Cleanup
-            self.bullets = [b for b in self.bullets if b.active]
-            self.asteroids = [a for a in self.asteroids if a.active]
-
-            # Wave clear → respawn
-            if not self.asteroids and not self.spawning:
-                self.spawning = True
-                self.spawn_timer = ASTEROID_RESPAWN_FRAMES
-            if self.spawning:
-                self.spawn_timer -= 1
-                if self.spawn_timer <= 0:
-                    self._spawn_wave()
-
-            self._render()
-            self.clock.tick(FPS)
-
-        pygame.quit()
-
-    # ── rendering ─────────────────────────────────────────────
-    def _render(self):
-        self.screen.fill((0, 0, 0))
-
-        # Asteroids
-        for a in self.asteroids:
-            self._draw_asteroid(a)
-
-        # Bullets
-        for b in self.bullets:
-            px, py = b.to_screen_coords()
-            pygame.draw.circle(self.screen, (255, 255, 100), (px, py), 2)
-
-        # Player
-        self._draw_player()
-
-        # HUD
-        font = pygame.font.SysFont(None, 24)
-        score_surf = font.render(f"Score: {self.score}", True, (200, 200, 200))
-        lives_surf = font.render(f"Lives: {self.lives}", True, (200, 200, 200))
-        self.screen.blit(score_surf, (12, 12))
-        self.screen.blit(lives_surf, (12, 38))
-
-        if not self.running:
-            msg = font.render("GAME OVER — press R to restart", True, (255, 80, 80))
-            rect = msg.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2))
-            self.screen.blit(msg, rect)
-
-        pygame.display.flip()
-
-    def _draw_player(self):
-        if self.player.invuln_timer > 0 and (self.player.invuln_timer // 4) % 2 == 0:
-            return  # blink
-        x, y = self.player.to_screen_coords()
-        a = self.player.angle
-        s = self.player.size
-        # simple triangle
-        nose = (x + int(math.cos(a) * s), y + int(math.sin(a) * s))
-        left = (x + int(math.cos(a + 2.5) * s), y + int(math.sin(a + 2.5) * s))
-        right = (x + int(math.cos(a - 2.5) * s), y + int(math.sin(a - 2.5) * s))
-        pygame.draw.polygon(self.screen, (255, 255, 255), [nose, left, right])
-        if self.player.thrusting:
-            flame = (x + int(math.cos(a) * -s * 0.6), y + int(math.sin(a) * -s * 0.6))
-            pygame.draw.line(self.screen, (255, 160, 0), flame,
-                             (x + int(math.cos(a) * -s * 1.2),
-                              y + int(math.sin(a) * -s * 1.2)), 3)
-
-    def _draw_asteroid(self, a: Asteroid):
-        x, y = a.to_screen_coords()
-        pts = []
-        for dx, dy in a._verts:
-            # rotate vertex by a.angle
-            ca, sa = math.cos(a.angle), math.sin(a.angle)
-            rx = dx * ca - dy * sa
-            ry = dx * sa + dy * ca
-            pts.append((x + int(rx), y + int(ry)))
-        if len(pts) >= 3:
-            pygame.draw.polygon(self.screen, (180, 180, 180), pts)
-            pygame.draw.polygon(self.screen, (120, 120, 120), pts, 2)
+            if self.state == self.PLAY:
+                self._play_input()
+                self._update_play()
+                if self.state != self.PLAY:
+                    pass  # state changed (e.g. entered shop) — skip render below
+            self.render()
+            self.clock.tick(get_fps())

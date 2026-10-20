@@ -1,48 +1,69 @@
 # player.py
-import math
-from entity import Entity
-from config import (PLAYER_SIZE, PLAYER_THRUST, PLAYER_TURN_SPEED,
-                    PLAYER_FRICTION, PLAYER_INVULN_FRAMES)
+import math, pygame
+from entity import GameObject
+from ships import ShipDef
+from upgrades import apply_upgrades
+from config import get_col_thrust, get_col_shield, get_col_ship_outline
 
+class Player(GameObject):
+    def __init__(self, ship: ShipDef, upgrades: dict[str, int], x: float, y: float):
+        self.ship = ship
+        self.upgrades = upgrades
+        self.stats = apply_upgrades(ship, upgrades)
 
-class Player(Entity):
-    def __init__(self, x, y):
-        super().__init__(x, y, angle=math.radians(-90), size=PLAYER_SIZE)
+        super().__init__(x, y, angle=math.radians(-90), size=ship.size)
+
         self.thrusting = False
-        self.turning = 0            # -1 left, 0 none, +1 right
+        self.turning = 0
         self.firing = False
-        self.invuln_timer = 0
-        self.shoot_cooldown = 0
+        self.shoot_cd = 0
+        self.invuln = 0
+        self.shield_charges = self.stats["shield_charges"]
+
+    # ── reset for a new level (keep upgrades, reset position) ──
+    def reset_position(self, x, y, invuln=120):
+        self.x, self.y, self.vx, self.vy = x, y, 0, 0
+        self.angle = math.radians(-90)
+        self.invuln = invuln
 
     def update(self):
-        # Turning
-        if self.turning == -1:
-            self.angle -= math.radians(PLAYER_TURN_SPEED)
-        elif self.turning == 1:
-            self.angle += math.radians(PLAYER_TURN_SPEED)
+        rad = math.radians(self.stats["turn_speed"])
+        if self.turning == -1: self.angle -= rad
+        elif self.turning == 1: self.angle += rad
 
-        # Thrust
         if self.thrusting:
-            self.vx += math.cos(self.angle) * PLAYER_THRUST
-            self.vy += math.sin(self.angle) * PLAYER_THRUST
+            self.vx += math.cos(self.angle) * self.stats["thrust"]
+            self.vy += math.sin(self.angle) * self.stats["thrust"]
 
-        # Friction / drag
-        self.vx *= PLAYER_FRICTION
-        self.vy *= PLAYER_FRICTION
+        self.vx *= 0.985
+        self.vy *= 0.985
 
-        # Cooldowns
-        if self.shoot_cooldown > 0:
-            self.shoot_cooldown -= 1
-        if self.invuln_timer > 0:
-            self.invuln_timer -= 1
-
+        if self.shoot_cd > 0: self.shoot_cd -= 1
+        if self.invuln > 0:   self.invuln   -= 1
         super().update()
 
     @property
-    def alive(self) -> bool:
-        return self.invuln_timer <= 0
+    def alive(self):
+        return self.invuln <= 0
 
-    def kill(self):
-        self.invuln_timer = PLAYER_INVULN_FRAMES
-        self.vx = 0
-        self.vy = 0
+    # ── render ────────────────────────────────────────────────
+    def draw(self, screen, font):
+        if self.invuln > 0 and (self.invuln // 4) % 2:
+            return
+        x, y = self.to_screen()
+        pts = []
+        for dx, dy in self.ship.shape:
+            ca, sa = math.cos(self.angle), math.sin(self.angle)
+            pts.append((x + int(dx*ca - dy*sa), y + int(dx*sa + dy*ca)))
+        if len(pts) >= 3:
+            pygame.draw.polygon(screen, self.ship.color, pts)
+            pygame.draw.polygon(screen, get_col_ship_outline(), pts, 1)
+        if self.shield_charges > 0:
+            pygame.draw.circle(screen, get_col_shield(), (x, y), int(self.size * 1.45), 2)
+        if self.thrusting:
+            bx = x + int(math.cos(self.angle) * -self.size * 1.3)
+            by = y + int(math.sin(self.angle) * -self.size * 1.3)
+            pygame.draw.line(screen, get_col_thrust(),
+                             (x + int(math.cos(self.angle)*-self.size*0.5),
+                              y + int(math.sin(self.angle)*-self.size*0.5)),
+                             (bx, by), 3)
