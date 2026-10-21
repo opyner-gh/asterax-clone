@@ -11,6 +11,7 @@ from ships import SHIP_ROSTER
 from levels import level_for
 from ship_select import ShipSelect
 from shop import Shop
+from mist import Mist
 
 # ── tiny starfield ────────────────────────────────────────────
 def make_stars(n=80):
@@ -30,6 +31,7 @@ class Game:
         pygame.display.set_caption("ASTERAX")
         self.clock = pygame.time.Clock()
         self.stars = make_stars()
+        self.mist  = Mist()
         self.font  = pygame.font.SysFont("monospace", 20)
         self.font_big = pygame.font.SysFont("monospace", 32, bold=True)
 
@@ -253,6 +255,8 @@ class Game:
             self.select_ui.draw(self.screen)
         elif self.state == self.PLAY:
             self._draw_bg()
+            if len(self.asteroids) == 1:
+                self.mist.draw(self.screen)
             self._draw_play()
         elif self.state == self.SHOP:
             self.shop_ui.draw(self.screen)
