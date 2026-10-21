@@ -2,7 +2,7 @@
 import pygame
 import math
 import random
-from config import (ROCK_SIZES, get_screen_size, get_fps,
+from config import (ROCK_POINTS, ROCK_CREDITS, get_screen_size, get_fps,
                     get_col_bg, get_col_star, get_col_bullet, get_col_ui_text, get_col_danger)
 from player import Player
 from asteroid import Asteroid
@@ -34,24 +34,26 @@ class Game:
         self.font_big = pygame.font.SysFont("monospace", 32, bold=True)
 
         self.state = self.SELECT
+        self.high_level = 0          # highest level cleared (for ship unlocks)
+
+        # current sub-state object (ShipSelect or Shop)
+        self.select_ui: ShipSelect | None = None
+        self.shop_ui: Shop | None = None
+
+        self._reset_run()
+        self._enter_select()
+
+    def _reset_run(self):
+        """Reset all per-run gameplay state while preserving meta-progression (high_level)."""
         self.ship = SHIP_ROSTER[0]
         self.upgrades: dict[str, int] = {}
         self.credits = 0
         self.level = 0
         self.score = 0
         self.lives = 3
-        self.high_level = 0          # highest level cleared (for ship unlocks)
-
-        # play-state objects
         self.player: Player | None = None
         self.asteroids: list[Asteroid] = []
         self.bullets: list[Bullet] = []
-
-        # current sub-state object (ShipSelect or Shop)
-        self.select_ui: ShipSelect | None = None
-        self.shop_ui: Shop | None = None
-
-        self._enter_select()
 
     # ── state transitions ─────────────────────────────────────
     def _enter_select(self):
@@ -119,10 +121,7 @@ class Game:
             for e in events:
                 if e.type == pygame.KEYDOWN:
                     if e.key == pygame.K_RETURN:
-                        self.credits = 0
-                        self.upgrades = {}
-                        self.level = 0
-                        self.score = 0
+                        self._reset_run()
                         self._enter_select()
                     elif e.key == pygame.K_ESCAPE:
                         return "quit"
@@ -154,7 +153,7 @@ class Game:
         # wave cleared?
         if not self.asteroids:
             self.score += 500 + self.level * 100
-            self.credits += 200 + self.level * 50
+            self.credits += 75 + self.level * 25
             self.high_level = max(self.high_level, self.level)
             self._enter_shop()
 
@@ -181,18 +180,23 @@ class Game:
     def _collisions(self):
         lvl = level_for(self.level)
         # bullet ↔ rock
+        new_rocks: list[Asteroid] = []
         for b in self.bullets:
+            if not b.active:
+                continue
             for a in self.asteroids:
-                if b.active and a.active and b.collides(a):
+                if a.active and b.collides(a):
                     b.active = False
                     a.active = False
-                    pts = next(p for _,k,p in ROCK_SIZES if k == a.size_key)
+                    pts = ROCK_POINTS[a.size_key]
                     self.score += pts
-                    self.credits += pts
-                    self.asteroids.extend(a.split(
+                    self.credits += ROCK_CREDITS[a.size_key]
+                    new_rocks.extend(a.split(
                         (lvl.rock_speed_min, lvl.rock_speed_max),
                         lvl.rock_split_chance))
                     break
+        if new_rocks:
+            self.asteroids.extend(new_rocks)
         # player ↔ rock
         if self.player.alive:
             for a in self.asteroids:

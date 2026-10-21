@@ -35,8 +35,15 @@ class Player(GameObject):
             self.vx += math.cos(self.angle) * self.stats["thrust"]
             self.vy += math.sin(self.angle) * self.stats["thrust"]
 
-        self.vx *= 0.985
-        self.vy *= 0.985
+        self.vx *= 0.98
+        self.vy *= 0.98
+
+        spd = math.hypot(self.vx, self.vy)
+        max_spd = self.stats["max_speed"]
+        if spd > max_spd:
+            scale = max_spd / spd
+            self.vx *= scale
+            self.vy *= scale
 
         if self.shoot_cd > 0: self.shoot_cd -= 1
         if self.invuln > 0:   self.invuln   -= 1

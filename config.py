@@ -35,3 +35,15 @@ ROCK_SIZES = [
     (18, "med",    50),
     (10, "small",  25),
 ]
+
+ROCK_RADIUS = {k: r for r, k, _ in ROCK_SIZES}
+ROCK_POINTS = {k: p for _, k, p in ROCK_SIZES}
+ROCK_CREDITS = {
+    "big":   10,
+    "med":    5,
+    "small":  3,
+}
+ROCK_NEXT_SIZE = {
+    ROCK_SIZES[i][1]: (ROCK_SIZES[i + 1][1] if i + 1 < len(ROCK_SIZES) else None)
+    for i in range(len(ROCK_SIZES))
+}

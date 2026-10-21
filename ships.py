@@ -18,6 +18,7 @@ class ShipDef:
     bullet_cooldown: int
     max_bullets: int
     size: int
+    max_speed: float = 6.5
     color: tuple = (220, 230, 240)
     shape: list[tuple] = field(default_factory=list)
     unlock_level: int = 0
@@ -29,16 +30,16 @@ class ShipDef:
 SHIP_ROSTER: list[ShipDef] = [
     ShipDef(
         name="Vanguard",
-        thrust=0.32, turn_speed=4.5,
-        bullet_speed=7.0, bullet_cooldown=7, max_bullets=5,
+        thrust=0.14, max_speed=6.5, turn_speed=3.6,
+        bullet_speed=8.5, bullet_cooldown=8, max_bullets=5,
         size=14,
         color=(220, 230, 240),
         unlock_level=0,
     ),
     ShipDef(
         name="Manta",
-        thrust=0.42, turn_speed=5.5,
-        bullet_speed=6.0, bullet_cooldown=5, max_bullets=4,
+        thrust=0.18, max_speed=8.0, turn_speed=4.4,
+        bullet_speed=8.0, bullet_cooldown=6, max_bullets=4,
         size=12,
         color=(180, 220, 255),
         unlock_level=3,   # unlock after clearing level 3
@@ -46,8 +47,8 @@ SHIP_ROSTER: list[ShipDef] = [
     ),
     ShipDef(
         name="Brutus",
-        thrust=0.22, turn_speed=3.0,
-        bullet_speed=8.5, bullet_cooldown=10, max_bullets=3,
+        thrust=0.10, max_speed=4.8, turn_speed=2.6,
+        bullet_speed=10.0, bullet_cooldown=11, max_bullets=3,
         size=20,
         color=(255, 210, 160),
         unlock_level=6,   # heavy tank

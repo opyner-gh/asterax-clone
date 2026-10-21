@@ -1,13 +1,13 @@
 # asteroid.py
 import math, random, pygame
 from entity import GameObject
-from config import ROCK_SIZES, get_col_rock, get_col_rock_outline
+from config import ROCK_SIZES, ROCK_RADIUS, ROCK_NEXT_SIZE, get_col_rock, get_col_rock_outline
 
 class Asteroid(GameObject):
     def __init__(self, x, y, size_key="big", speed_range=(1.0, 3.0)):
         ang = random.uniform(0, 2 * math.pi)
         spd = random.uniform(*speed_range)
-        radius = next((r for r, k, _ in ROCK_SIZES if k == size_key), ROCK_SIZES[0][0])
+        radius = ROCK_RADIUS.get(size_key, ROCK_SIZES[0][0])
         super().__init__(x, y, math.cos(ang)*spd, math.sin(ang)*spd, size=radius)
         self.size_key = size_key
         self.spin = random.uniform(-1.5, 1.5)
@@ -24,10 +24,9 @@ class Asteroid(GameObject):
         super().update()
 
     def split(self, speed_range, split_chance=1.0):
-        idx = next(i for i,(_,k,_) in enumerate(ROCK_SIZES) if k == self.size_key)
-        if idx >= len(ROCK_SIZES) - 1 or random.random() > split_chance:
+        nk = ROCK_NEXT_SIZE.get(self.size_key)
+        if nk is None or random.random() > split_chance:
             return []
-        nk = ROCK_SIZES[idx+1][1]
         return [Asteroid(self.x+random.uniform(-10,10), self.y+random.uniform(-10,10),
                          nk, speed_range) for _ in range(2)]
 

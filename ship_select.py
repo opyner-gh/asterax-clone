@@ -43,11 +43,12 @@ class ShipSelect:
         # stats panel
         panel_y = cy + 60
         stats = [
-            ("THRUST",    ship.thrust,       0.5),
-            ("TURN",      ship.turn_speed,   7.0),
-            ("BULLET SPD",ship.bullet_speed,10.0),
-            ("FIRE RATE", 10/ship.bullet_cooldown, 2.0),
-            ("MAX BULLETS",ship.max_bullets, 8),
+            ("THRUST",     ship.thrust,             0.22),
+            ("TOP SPEED",  ship.max_speed,          9.0),
+            ("TURN",       ship.turn_speed,         5.5),
+            ("BULLET SPD", ship.bullet_speed,       11.0),
+            ("FIRE RATE",  10/ship.bullet_cooldown, 2.0),
+            ("MAX BULLETS",ship.max_bullets,        8),
         ]
         for i, (label, val, maxv) in enumerate(stats):
             y = panel_y + i * 26
