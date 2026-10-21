@@ -29,6 +29,19 @@ def get_col_ui_purchased(): return (100, 200, 124)   # 64c87c
 def get_col_danger():       return (220,  80,  70)   # dc5046
 def get_col_shield():       return ( 80, 160, 255)   # 50a0ff
 
+# ── last-asteroid rainbow mist ─────────────────────────────────
+MIST_HUE_SPEED   = 60     # degrees of rainbow shift per second
+MIST_DRIFT_SPEED = 1.0    # how fast the fog layers drift
+MIST_WAVE_SPEED  = 1.6    # how fast the ripples travel
+MIST_WAVE_AMP    = 18     # ripple strength (px of sideways warp)
+MIST_PULSE_HZ    = 2.0    # glow pulses per second
+MIST_GLOW_MIN    = 0.55   # fog glow at pulse low (0-1)
+MIST_GLOW_MAX    = 1.0    # fog glow at pulse peak (0-1)
+MIST_DENSITY     = 95     # peak brightness of each fog layer (0-255)
+MIST_SATURATION  = 55     # rainbow colour strength (0-100, lower = paler)
+MIST_GRID_STEP   = 64     # px between overlay grid lines
+MIST_GRID_ALPHA  = 22     # overlay grid opacity (0-255)
+
 # (radius, size_key, points)
 ROCK_SIZES = [
     (30, "big",   100),
